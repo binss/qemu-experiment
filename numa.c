@@ -411,7 +411,7 @@ static void allocate_system_memory_nonnuma(MemoryRegion *mr, Object *owner,
     if (mem_path) {
 #ifdef __linux__
         Error *err = NULL;
-        memory_region_init_ram_from_file(mr, owner, name, ram_size, false,
+        memory_region_init_ram_from_file(mr, owner, name, ram_size, true,
                                          mem_path, &err);
         if (err) {
             error_report_err(err);
@@ -429,7 +429,16 @@ static void allocate_system_memory_nonnuma(MemoryRegion *mr, Object *owner,
         exit(1);
 #endif
     } else {
-        memory_region_init_ram(mr, owner, name, ram_size, &error_fatal);
+        fprintf(stdout, "memory init [%s], size: %ld\n", name, ram_size);
+        if(use_shm) {
+            fprintf(stdout, "use shm\n");    
+            memory_region_init_shram(mr, owner, name, ram_size, &error_fatal);
+        }
+        else {
+            memory_region_init_ram(mr, owner, name, ram_size, &error_fatal);
+        }
+
+        fflush(stdout);
     }
     vmstate_register_ram_global(mr);
 }

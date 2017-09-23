@@ -79,6 +79,9 @@ common-obj-$(CONFIG_SECCOMP) += qemu-seccomp.o
 
 common-obj-$(CONFIG_FDT) += device_tree.o
 
+# binss add
+common-obj-y += binss-extend.o
+
 ######################################################################
 # qapi
 

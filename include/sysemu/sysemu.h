@@ -129,6 +129,11 @@ void qemu_savevm_send_postcopy_ram_discard(QEMUFile *f, const char *name,
 
 int qemu_loadvm_state(QEMUFile *f);
 
+// binss add
+void qemu_savevm_cpu_state(QEMUFile *f);
+int qemu_loadvm_cpu_state(QEMUFile *f);
+
+
 extern int autostart;
 
 typedef enum {
@@ -164,6 +169,9 @@ extern uint8_t qemu_extra_params_fw[2];
 extern QEMUClockType rtc_clock;
 extern const char *mem_path;
 extern int mem_prealloc;
+
+extern int use_shm;
+
 
 #define MAX_NODES 128
 #define NUMA_NODE_UNASSIGNED MAX_NODES

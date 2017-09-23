@@ -83,6 +83,10 @@
 #include "hw/s390x/storage-keys.h"
 #endif
 
+// binss
+#include "binss-extend.h"
+
+
 /*
  * Supported types:
  *
@@ -849,6 +853,112 @@ static void do_help_cmd(Monitor *mon, const QDict *qdict)
 {
     help_cmd(mon, qdict_get_try_str(qdict, "name"));
 }
+
+
+// binss add
+static void do_send_cmd(Monitor *mon, const QDict *qdict)
+{
+    monitor_printf(mon, "send~~~\n");
+    monitor_printf(mon, "args: %s\n", qdict_get_try_str(qdict, "name"));
+
+    test_io_channel_send(mon);
+}
+
+static void do_recv_cmd(Monitor *mon, const QDict *qdict)
+{
+    monitor_printf(mon, "recv~~~\n");
+    monitor_printf(mon, "args: %s\n", qdict_get_try_str(qdict, "name"));
+
+    test_io_channel_recv(mon);
+
+}
+
+static void do_write_cmd(Monitor *mon, const QDict *qdict)
+{
+    monitor_printf(mon, "write~~~\n");
+    monitor_printf(mon, "args: %s\n", qdict_get_try_str(qdict, "name"));
+
+    write_file(mon);
+}
+
+
+static void do_read_cmd(Monitor *mon, const QDict *qdict)
+{
+    monitor_printf(mon, "read~~~\n");
+    monitor_printf(mon, "args: %s\n", qdict_get_try_str(qdict, "name"));
+    read_file(mon);
+}
+
+
+
+static void do_test_cmd(Monitor *mon, const QDict *qdict)
+{
+    monitor_printf(mon, "Test~~~\n");
+    monitor_printf(mon, "args: %s\n", qdict_get_try_str(qdict, "name"));
+    CPUState *cpu;
+
+    const char *name = qdict_get_try_str(qdict, "name");
+
+    if (strcmp(name, "pause")) {
+        CPU_FOREACH(cpu) {
+            monitor_printf(mon, "%d\n", cpu->cpu_index);
+            if (cpu->cpu_index == 3) {
+                monitor_printf(mon, "stop cpu %d\n", cpu->cpu_index);
+                cpu->stopped = true;
+                qemu_cpu_kick(cpu);
+
+            }
+        }
+    }
+    if (strcmp(name, "run")) {
+        CPU_FOREACH(cpu) {
+            monitor_printf(mon, "%d\n", cpu->cpu_index);
+            if (cpu->cpu_index == 3) {
+                monitor_printf(mon, "run cpu %d\n", cpu->cpu_index);
+                cpu->stopped = true;
+                qemu_cpu_kick(cpu);
+
+            }
+        }
+    }
+}
+
+static void handle_feed_command(JSONMessageParser *parser, GQueue *tokens);
+
+static size_t get_len(const char * str)
+{
+    const char *p, *pstart;
+    if (str == NULL)
+        return 0;
+
+    p = str;
+    pstart = p;
+    while (*p != '\0')
+        p++;
+
+    return p - pstart + 1;
+}
+
+static void do_feed_cmd(Monitor *mon, const QDict *qdict)
+{
+    monitor_printf(mon, "feed~~~\n");
+    monitor_printf(mon, "args: %s\n", qdict_get_try_str(qdict, "content"));
+    // CPUState *cpu;
+
+    const char *content = qdict_get_try_str(qdict, "content");
+    size_t size = get_len(content);
+    monitor_printf(mon, "len: %ld\n", size);
+
+
+    JSONMessageParser parser;
+    json_message_parser_init(&parser, handle_feed_command);
+    json_message_parser_feed(&parser, content, size);
+    json_message_parser_destroy(&parser);
+}
+
+
+
+
 
 static void hmp_trace_event(Monitor *mon, const QDict *qdict)
 {
@@ -2492,11 +2602,11 @@ static int default_fmt_size = 4;
 static int is_valid_option(const char *c, const char *typestr)
 {
     char option[3];
-  
+
     option[0] = '-';
     option[1] = *c;
     option[2] = '\0';
-  
+
     typestr = strstr(typestr, option);
     return (typestr != NULL);
 }
@@ -2861,7 +2971,7 @@ static QDict *monitor_parse_arguments(Monitor *mon,
                     p++;
                     if(c != *p) {
                         if(!is_valid_option(p, typestr)) {
-                  
+
                             monitor_printf(mon, "%s: unsupported option -%c\n",
                                            cmd->name, *p);
                             goto fail;
@@ -3723,6 +3833,82 @@ static QDict *qmp_check_input_obj(QObject *input_obj, Error **errp)
     return input_dict;
 }
 
+
+// binss
+
+static void handle_feed_command(JSONMessageParser *parser, GQueue *tokens)
+{
+    QObject *req, *rsp = NULL, *id = NULL;
+    QDict *qdict = NULL;
+    const char *cmd_name;
+    Monitor *mon = cur_mon;
+    Error *err = NULL;
+
+    req = json_parser_parse_err(tokens, NULL, &err);
+    if (err || !req || qobject_type(req) != QTYPE_QDICT) {
+        if (!err) {
+            error_setg(&err, QERR_JSON_PARSING);
+        }
+        goto err_out;
+    }
+
+    qdict = qmp_check_input_obj(req, &err);
+    if (!qdict) {
+        goto err_out;
+    }
+
+    id = qdict_get(qdict, "id");
+    qobject_incref(id);
+    qdict_del(qdict, "id");
+
+    cmd_name = qdict_get_str(qdict, "execute");
+    monitor_printf(mon, "cmd name: %s\n", cmd_name);
+
+    CPUState *cpu;
+    CPU_FOREACH(cpu) {
+        monitor_printf(mon, "%d\n", cpu->cpu_index);
+        qdict = qdict_new();
+        qdict_put(qdict, "cpu_index", qint_from_int(cpu->cpu_index));
+        qdict_put(qdict, "thread_id", qint_from_int(cpu->thread_id));
+        qdict_put(qdict, "kvm_fd", qint_from_int(cpu->kvm_fd));
+        qdict_put(qdict, "stop", qbool_from_bool(cpu->stop));
+        qdict_put(qdict, "stopped", qbool_from_bool(cpu->stopped));
+        qdict_put(qdict, "halted", qbool_from_bool(cpu->halted));
+        monitor_json_emitter(mon, QOBJECT(qdict));
+    }
+
+
+
+    // trace_handle_qmp_command(mon, cmd_name);
+
+    // if (invalid_qmp_mode(mon, cmd_name, &err)) {
+    //     goto err_out;
+    // }
+
+    // rsp = qmp_dispatch(req);
+
+err_out:
+    if (err) {
+        qdict = qdict_new();
+        qdict_put_obj(qdict, "error", qmp_build_error_object(err));
+        error_free(err);
+        rsp = QOBJECT(qdict);
+    }
+
+    if (rsp) {
+        if (id) {
+            qdict_put_obj(qobject_to_qdict(rsp), "id", id);
+            id = NULL;
+        }
+
+        // monitor_json_emitter(mon, rsp);
+    }
+
+    qobject_decref(id);
+    qobject_decref(rsp);
+    qobject_decref(req);
+}
+
 static void handle_qmp_command(JSONMessageParser *parser, GQueue *tokens)
 {
     QObject *req, *rsp = NULL, *id = NULL;
@@ -3778,6 +3964,8 @@ err_out:
     qobject_decref(rsp);
     qobject_decref(req);
 }
+
+
 
 static void monitor_qmp_read(void *opaque, const uint8_t *buf, int size)
 {
@@ -4157,3 +4345,4 @@ HotpluggableCPUList *qmp_query_hotpluggable_cpus(Error **errp)
 
     return mc->query_hotpluggable_cpus(ms);
 }
+

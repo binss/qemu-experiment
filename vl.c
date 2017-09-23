@@ -135,6 +135,10 @@ int request_opengl = -1;
 int display_opengl;
 const char* keyboard_layout = NULL;
 ram_addr_t ram_size;
+
+// binss add: shm
+int use_shm = 0;
+
 const char *mem_path = NULL;
 int mem_prealloc = 0; /* force preallocation of physical target memory */
 bool enable_mlock = false;
@@ -4043,6 +4047,10 @@ int main(int argc, char **argv, char **envp)
                     error_report("open %s: %s", optarg, strerror(errno));
                     exit(1);
                 }
+                break;
+            // binss add: shm
+            case QEMU_OPTION_enable_shm:
+                use_shm = 1;
                 break;
             default:
                 os_parse_cmd_args(popt->index, optarg);

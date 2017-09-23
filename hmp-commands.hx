@@ -9,6 +9,95 @@ STEXI
 @table @option
 ETEXI
 
+
+    {
+        .name       = "send",
+        .args_type  = "name:S?",
+        .params     = "[cmd]",
+        .help       = "test",
+        .cmd        = do_send_cmd,
+    },
+
+STEXI
+@item send [@var{cmd}]
+binss: send
+ETEXI
+
+    {
+        .name       = "recv",
+        .args_type  = "name:S?",
+        .params     = "[cmd]",
+        .help       = "test",
+        .cmd        = do_recv_cmd,
+    },
+
+STEXI
+@item recv [@var{cmd}]
+binss: recv
+ETEXI
+
+
+    {
+        .name       = "write",
+        .args_type  = "name:S?",
+        .params     = "[cmd]",
+        .help       = "test",
+        .cmd        = do_write_cmd,
+    },
+
+STEXI
+@item write [@var{cmd}]
+binss: write
+ETEXI
+
+
+    {
+        .name       = "read",
+        .args_type  = "name:S?",
+        .params     = "[cmd]",
+        .help       = "read",
+        .cmd        = do_read_cmd,
+    },
+
+STEXI
+@item read [@var{cmd}]
+binss: read
+ETEXI
+
+
+
+
+
+    {
+        .name       = "test",
+        .args_type  = "name:s",
+        .params     = "[cmd]",
+        .help       = "test",
+        .cmd        = do_test_cmd,
+    },
+
+STEXI
+@item test [@var{cmd}]
+binss: just for test
+ETEXI
+
+
+    {
+        .name       = "feed",
+        .args_type  = "content:S?",
+        .params     = "[cmd]",
+        .help       = "feed",
+        .cmd        = do_feed_cmd,
+    },
+
+STEXI
+@item feed [@var{cmd}]
+binss: feed json
+ETEXI
+
+
+
+
     {
         .name       = "help|?",
         .args_type  = "name:S?",
@@ -1777,3 +1866,4 @@ ETEXI
 STEXI
 @end table
 ETEXI
+

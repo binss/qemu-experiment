@@ -801,7 +801,8 @@ void qemu_savevm_send_open_return_path(QEMUFile *f)
  * TODO: Must be a better way to organise that
  *
  * Returns:
- *    0 on success
+ *    0 on su:call ToggleComment()
+ess
  *    -ve on error
  */
 int qemu_savevm_send_packaged(QEMUFile *f, const uint8_t *buf, size_t len)
@@ -1062,6 +1063,70 @@ void qemu_savevm_state_complete_postcopy(QEMUFile *f)
     qemu_put_byte(f, QEMU_VM_EOF);
     qemu_fflush(f);
 }
+
+// binss add
+void qemu_savevm_cpu_state(QEMUFile *f)
+{
+    QJSON *vmdesc;
+    int vmdesc_len;
+    SaveStateEntry *se;
+    // int ret;
+
+    trace_savevm_state_complete_precopy();
+
+    cpu_synchronize_all_states();
+
+
+    vmdesc = qjson_new();
+    json_prop_int(vmdesc, "page_size", TARGET_PAGE_SIZE);
+    json_start_array(vmdesc, "devices");
+    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+
+        if ((!se->ops || !se->ops->save_state) && !se->vmsd) {
+            continue;
+        }
+        if (se->vmsd && !vmstate_save_needed(se->vmsd, se->opaque)) {
+            trace_savevm_section_skip(se->idstr, se->section_id);
+            continue;
+        }
+        if (strcmp(se->idstr, "cpu_common") && strcmp(se->idstr, "cpu")) {
+            continue;
+        }
+
+        // trace_savevm_section_start(se->idstr, se->section_id);
+
+        json_start_object(vmdesc, NULL);
+        json_prop_str(vmdesc, "name", se->idstr);
+        json_prop_int(vmdesc, "instance_id", se->instance_id);
+
+        save_section_header(f, se, QEMU_VM_SECTION_FULL);
+        vmstate_save(f, se, vmdesc);
+        trace_savevm_section_end(se->idstr, se->section_id, 0);
+        save_section_footer(f, se);
+
+        json_end_object(vmdesc);
+    }
+
+
+    qemu_put_byte(f, QEMU_VM_EOF);
+
+
+    json_end_array(vmdesc);
+    qjson_finish(vmdesc);
+    vmdesc_len = strlen(qjson_get_str(vmdesc));
+
+    if (should_send_vmdesc()) {
+        qemu_put_byte(f, QEMU_VM_VMDESCRIPTION);
+        qemu_put_be32(f, vmdesc_len);
+        qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
+    }
+    qjson_destroy(vmdesc);
+
+    qemu_fflush(f);
+}
+
+
+// binss add end
 
 void qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only)
 {
@@ -2013,6 +2078,108 @@ int qemu_loadvm_state(QEMUFile *f)
     return ret;
 }
 
+// binss add 2
+int qemu_loadvm_cpu_state(QEMUFile *f)
+{
+    // MigrationIncomingState *mis = migration_incoming_get_current();
+    MigrationIncomingState *mis = migration_incoming_state_new(f);
+
+    Error *local_err = NULL;
+    unsigned int v;
+    int ret;
+
+    if (qemu_savevm_state_blocked(&local_err)) {
+        error_report_err(local_err);
+        return -EINVAL;
+    }
+
+    // header
+    v = qemu_get_be32(f);
+    if (v != QEMU_VM_FILE_MAGIC) {
+        error_report("Not a migration stream");
+        return -EINVAL;
+    }
+
+    v = qemu_get_be32(f);
+    if (v == QEMU_VM_FILE_VERSION_COMPAT) {
+        error_report("SaveVM v2 format is obsolete and don't work anymore");
+        return -ENOTSUP;
+    }
+    if (v != QEMU_VM_FILE_VERSION) {
+        error_report("Unsupported migration stream version");
+        return -ENOTSUP;
+    }
+
+    if (!savevm_state.skip_configuration || enforce_config_section()) {
+        if (qemu_get_byte(f) != QEMU_VM_CONFIGURATION) {
+            error_report("Configuration section missing");
+            return -EINVAL;
+        }
+        ret = vmstate_load_state(f, &vmstate_configuration, &savevm_state, 0);
+
+        if (ret) {
+            return ret;
+        }
+    }
+
+    // detail
+    ret = qemu_loadvm_state_main(f, mis);
+    qemu_event_set(&mis->main_thread_load_event);
+
+    trace_qemu_loadvm_state_post_main(ret);
+
+    if (mis->have_listen_thread) {
+        /* Listen thread still going, can't clean up yet */
+        return ret;
+    }
+
+    if (ret == 0) {
+        ret = qemu_file_get_error(f);
+    }
+
+    /*
+     * Try to read in the VMDESC section as well, so that dumping tools that
+     * intercept our migration stream have the chance to see it.
+     */
+
+    /* We've got to be careful; if we don't read the data and just shut the fd
+     * then the sender can error if we close while it's still sending.
+     * We also mustn't read data that isn't there; some transports (RDMA)
+     * will stall waiting for that data when the source has already closed.
+     */
+    if (ret == 0 && should_send_vmdesc()) {
+        uint8_t *buf;
+        uint32_t size;
+        uint8_t  section_type = qemu_get_byte(f);
+
+        if (section_type != QEMU_VM_VMDESCRIPTION) {
+            error_report("Expected vmdescription section, but got %d",
+                         section_type);
+            /*
+             * It doesn't seem worth failing at this point since
+             * we apparently have an otherwise valid VM state
+             */
+        } else {
+            buf = g_malloc(0x1000);
+            size = qemu_get_be32(f);
+
+            while (size > 0) {
+                uint32_t read_chunk = MIN(size, 0x1000);
+                qemu_get_buffer(f, buf, read_chunk);
+                size -= read_chunk;
+            }
+            g_free(buf);
+        }
+    }
+
+    cpu_synchronize_all_post_init();
+
+    return ret;
+}
+
+
+// end
+
 void hmp_savevm(Monitor *mon, const QDict *qdict)
 {
     BlockDriverState *bs, *bs1;
@@ -2043,7 +2210,7 @@ void hmp_savevm(Monitor *mon, const QDict *qdict)
 
     bs = bdrv_all_find_vmstate_bs();
     if (bs == NULL) {
-        monitor_printf(mon, "No block device can accept snapshots\n");
+        monitor_printf(mon, "No block device can a:call ToggleComment() ept snapshots\n");
         return;
     }
     aio_context = bdrv_get_aio_context(bs);
@@ -2412,3 +2579,4 @@ void vmstate_register_ram_global(MemoryRegion *mr)
 {
     vmstate_register_ram(mr, NULL);
 }
+

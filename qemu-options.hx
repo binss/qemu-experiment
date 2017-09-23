@@ -11,6 +11,19 @@ STEXI
 @table @option
 ETEXI
 
+DEF("enable-shm", 0, QEMU_OPTION_enable_shm, \
+    "-enable-shm     alloc memory from shm, create file /dev/shm/qemu-shared-ram as share memory\n", QEMU_ARCH_ALL)
+STEXI
+@item -enable-shm
+@findex -enable-shm
+alloc memory from shm, create file /dev/shm/qemu-shared-ram as share memory
+ETEXI
+
+
+
+
+
+
 DEF("help", 0, QEMU_OPTION_h,
     "-h or -help     display this help and exit\n", QEMU_ARCH_ALL)
 STEXI
